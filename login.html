@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>로그인 - 메모장</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <div class="bg-white p-8 rounded shadow-lg w-full max-w-xs flex flex-col items-center">
+    <h1 class="text-2xl font-bold mb-6">🔒 메모장 로그인</h1>
+    <input type="password" id="pwInput" class="w-full px-4 py-2 border rounded mb-3 text-lg" placeholder="암호를 입력하세요" autofocus />
+    <button id="loginBtn" class="w-full bg-blue-600 text-white py-2 rounded font-bold">로그인</button>
+    <div id="loginMsg" class="text-red-500 text-sm mt-3 h-5"></div>
+  </div>
+  <script>
+    let ENCRYPTED_PW = '';
+    const pwInput = document.getElementById('pwInput');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginMsg = document.getElementById('loginMsg');
+    // 서버에서 암호 base64 값을 받아온 후 로그인 이벤트 등록
+    fetch('/api/env-pw')
+      .then(res => res.json())
+      .then(data => {
+        ENCRYPTED_PW = data.pw;
+        function tryLogin() {
+          const val = btoa(pwInput.value);
+          if (val === ENCRYPTED_PW) {
+            window.sessionStorage.setItem('pw_ok', '1');
+            window.location.href = 'index.html';
+          } else {
+            loginMsg.textContent = '암호가 올바르지 않습니다.';
+            pwInput.value = '';
+            pwInput.focus();
+          }
+        }
+        loginBtn.onclick = tryLogin;
+        pwInput.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') tryLogin();
+        });
+        pwInput.focus();
+      });
+  </script>
+</body>
+</html> 

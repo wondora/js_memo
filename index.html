@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>메모장</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="app.js"></script>
+  <script>
+    // 로그인 인증 체크: sessionStorage에 pw_ok 없으면 login.html로 이동
+    if (!window.sessionStorage.getItem('pw_ok')) {
+      window.location.href = 'login.html';
+    }
+  </script>
+</head>
+<body class="bg-gray-100 font-sans">
+  <div id="mainApp" class="max-w-2xl mx-auto mt-10 mb-10">
+    <header class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold">📝 메모장</h1>
+      <button id="newMemoBtn" class="bg-blue-600 text-white px-4 py-2 rounded hidden">+ 새 메모</button>
+    </header>
+
+    <div class="mb-4 flex justify-between">
+      <input type="text" id="searchInput" placeholder="검색..." class="w-full px-3 py-2 rounded border">
+    </div>
+
+    <ul id="memoList" class="space-y-3">
+      <!-- 메모가 여기에 표시됩니다 -->
+    </ul>
+    <div id="pagination" class="flex justify-center mt-8 space-x-2"></div>
+  </div>
+
+  <!-- 메모 편집 모달 -->
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-30 flex items-center hidden justify-center z-50">
+    <div class="bg-white p-8 rounded w-full max-w-3xl shadow-xl">
+        <h2 class="text-xl font-bold mb-4" id="modalTitle">메모 작성</h2>
+        <input type="text" id="memoTitle" class="w-full mb-3 px-5 py-4 border rounded text-lg" placeholder="제목" />
+        <div class="relative">
+          <div id="memoContent" class="w-full px-5 py-6 border rounded text-base overflow-y-auto" style="white-space: pre-wrap; word-wrap: break-word; min-height: 500px; max-height: 700px;"></div>
+          <div id="memoPlaceholder" class="absolute left-0 top-0 w-full h-full px-5 py-6 pointer-events-none select-none text-gray-400" style="z-index:1;">내용</div>
+        </div>
+        <div class="mt-4">
+            <input type="file" id="memoFileInput" class="mb-3" multiple />
+            <span id="selectedFiles" class="ml-2 text-sm text-gray-600"></span>
+            
+            <!-- 파일 업로드 진행바 -->
+            <div id="uploadProgressContainer" class="hidden mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div class="flex items-center justify-between mb-2">
+                <span id="uploadStatus" class="text-sm font-medium text-blue-800">업로드 중...</span>
+                <span id="uploadPercent" class="text-sm font-bold text-blue-600">0%</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
+                <div id="uploadProgressBar" class="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300 ease-out shadow-sm" style="width: 0%"></div>
+              </div>
+              <div id="uploadDetails" class="text-xs text-gray-600 font-mono"></div>
+            </div>
+        </div>
+        <div class="mt-4 text-right">
+            <button id="cancelBtn" class="mr-2 px-4 py-2 bg-gray-300 rounded">취소</button>
+            <button id="saveBtn" class="px-4 py-2 bg-blue-600 text-white rounded">저장</button>
+        </div>
+    </div>
+</div>
+
+<!-- 채팅 플로팅 버튼 -->
+<a href="https://chat.fji.kr" target="_blank" aria-label="채팅 열기"
+   class="fixed bottom-8 right-8 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg w-16 h-16 flex items-center justify-center text-3xl transition-colors duration-200 z-50">
+  💬
+</a>
+</body>
+</html>
