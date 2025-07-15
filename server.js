@@ -3,30 +3,47 @@ const sqlite3 = require('sqlite3').verbose();
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
-const CryptoJS = require('crypto-js');
 const multer = require('multer');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
-require('dotenv').config();
+const compression = require('compression'); // 압축 미들웨어 추가
+const CryptoJS = require('crypto-js'); // 반드시 맨 위에 한 번만!
 
 const app = express();
 const PORT = 3000;
 
+// 압축 미들웨어 추가 (gzip 압축)
+app.use(compression());
+
 // CORS 설정 (필요시)
 app.use(cors({
   origin: [
-   // 'https://memo2.fji.kr',  
-    'http://10.114.2.101:3000',
-    //'https://100.124.253.64:3000',   	
+    'https://memo2.fji.kr',  
+    //'http://10.114.2.101:3000',
+    'https://100.124.253.64:3000',   	
   ],
   credentials: true
 }));
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
-// DB 연결 및 테이블 생성
+// 정적 파일 캐싱 설정
+app.use(express.static(path.join(__dirname), {
+  maxAge: '1h', // 1시간 캐시
+  etag: true
+}));
+
+// body-parser 미들웨어가 누락되어 있으면 추가
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// DB 연결 및 테이블 생성 (성능 최적화)
 const db = new sqlite3.Database('memo.db');
 db.serialize(() => {
+  // WAL 모드 활성화로 동시성 향상
+  db.run('PRAGMA journal_mode = WAL');
+  db.run('PRAGMA synchronous = NORMAL');
+  db.run('PRAGMA cache_size = 10000');
+  db.run('PRAGMA temp_store = MEMORY');
+  
   db.run(`CREATE TABLE IF NOT EXISTS memos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -39,6 +56,10 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY CHECK (id = 1),
     pw TEXT NOT NULL
   )`);
+  
+  // 인덱스 추가로 검색 성능 향상
+  db.run('CREATE INDEX IF NOT EXISTS idx_memos_title ON memos(title)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_memos_date ON memos(date)');
 });
 
 // 파일 업로드 설정
@@ -61,8 +82,23 @@ const upload = multer({
   })
 });
 
+// 메모 캐시 (메모리 캐싱)
+let memoCache = null;
+let cacheTimestamp = 0;
+const CACHE_DURATION = 30000; // 30초
+
+// 캐시 무효화 함수
+function invalidateCache() {
+  memoCache = null;
+  cacheTimestamp = 0;
+}
+
 // API 라우트
+// 비밀번호 저장
 app.post('/api/password', (req, res) => {
+  if (!req.body || !req.body.pw) {
+    return res.status(400).json({ error: 'pw 값이 필요합니다.' });
+  }
   const { pw } = req.body;
   const hash = CryptoJS.SHA256(pw).toString(CryptoJS.enc.Hex);
   db.run('INSERT OR REPLACE INTO password (id, pw) VALUES (1, ?)', [hash], function(err) {
@@ -70,7 +106,12 @@ app.post('/api/password', (req, res) => {
     res.json({ success: true });
   });
 });
+
+// 비밀번호 체크
 app.post('/api/password/check', (req, res) => {
+  if (!req.body || !req.body.pw) {
+    return res.status(400).json({ error: 'pw 값이 필요합니다.' });
+  }
   const { pw } = req.body;
   const hash = CryptoJS.SHA256(pw).toString(CryptoJS.enc.Hex);
   db.get('SELECT pw FROM password WHERE id = 1', (err, row) => {
@@ -79,7 +120,15 @@ app.post('/api/password/check', (req, res) => {
     res.json({ match: row.pw === hash });
   });
 });
+
 app.get('/api/memos', (req, res) => {
+  const now = Date.now();
+  
+  // 캐시가 유효하면 캐시된 데이터 반환
+  if (memoCache && (now - cacheTimestamp) < CACHE_DURATION) {
+    return res.json(memoCache);
+  }
+  
   db.all('SELECT * FROM memos ORDER BY id DESC', (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     // attachedFiles가 있으면 JSON 파싱
@@ -88,9 +137,15 @@ app.get('/api/memos', (req, res) => {
         try { row.attachedFiles = JSON.parse(row.attachedFiles); } catch (e) { row.attachedFiles = []; }
       }
     });
+    
+    // 캐시 업데이트
+    memoCache = rows;
+    cacheTimestamp = now;
+    
     res.json(rows);
   });
 });
+
 app.post('/api/memos', (req, res) => {
   const { title, content, date, attachedFile, attachedFiles } = req.body;
   // attachedFiles는 [{filename, originalname}] 배열로 저장
@@ -99,16 +154,20 @@ app.post('/api/memos', (req, res) => {
       console.error('SQLite INSERT 오류:', err.message);
       return res.status(500).json({ error: '메모 저장 실패.', details: err.message });
     }
+    invalidateCache(); // 캐시 무효화
     res.json({ id: this.lastID });
   });
 });
+
 app.put('/api/memos/:id', (req, res) => {
   const { title, content } = req.body;
   db.run('UPDATE memos SET title = ?, content = ? WHERE id = ?', [title, content, req.params.id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
+    invalidateCache(); // 캐시 무효화
     res.json({ success: true });
   });
 });
+
 app.delete('/api/memos/:id', (req, res) => {
   db.get('SELECT attachedFile, attachedFiles FROM memos WHERE id = ?', [req.params.id], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -131,6 +190,7 @@ app.delete('/api/memos/:id', (req, res) => {
         const filePath = path.join('uploads', attachedFile);
         fs.unlink(filePath, () => {});
       }
+      invalidateCache(); // 캐시 무효화
       res.json({ success: true });
     });
   });
@@ -143,8 +203,19 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
   res.json({ success: true, filename: req.file.filename, originalname: req.file.originalname });
 });
 
-// 업로드 파일 목록 API
+// 업로드 파일 목록 API (캐싱 추가)
+let fileListCache = null;
+let fileListCacheTime = 0;
+const FILE_CACHE_DURATION = 60000; // 1분
+
 app.get('/api/files', (req, res) => {
+  const now = Date.now();
+  
+  // 캐시가 유효하면 캐시된 데이터 반환
+  if (fileListCache && (now - fileListCacheTime) < FILE_CACHE_DURATION) {
+    return res.json(fileListCache);
+  }
+  
   fs.readdir('uploads', (err, files) => {
     if (err) return res.status(500).json({ error: err.message });
     // 파일명, 원본명, 업로드 시간 등 정보 제공
@@ -156,16 +227,38 @@ app.get('/api/files', (req, res) => {
         mtime: stat.mtime
       };
     });
+    
+    // 캐시 업데이트
+    fileListCache = fileInfos;
+    fileListCacheTime = now;
+    
     res.json(fileInfos);
   });
 });
 
-// 업로드 파일 정적 서빙
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// 업로드 파일 정적 서빙 (캐싱 설정)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  maxAge: '1d', // 1일 캐시
+  etag: true
+}));
 
-// 정적 파일 서빙
+// 1. API 라우트가 먼저 오도록 배치
+app.get('/api/env-pw', (req, res) => {
+  const CryptoJS = require('crypto-js');
+  const hash = CryptoJS.SHA256('3895').toString(CryptoJS.enc.Hex);
+  res.json({ pw: hash });
+});
+
+// 2. 그 다음에 정적 파일 서빙
 app.use(express.static(path.join(__dirname)));
+
+// /로 접속 시 login.html 반환
 app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+// /index.html로 접속 시 index.html 반환
+app.get('/index.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
@@ -179,6 +272,7 @@ app.post('/api/deletefile', (req, res) => {
     if (memoId) {
       db.run('UPDATE memos SET attachedFile = NULL WHERE id = ?', [memoId], function(err2) {
         if (err2) return res.status(500).json({ error: err2.message });
+        invalidateCache(); // 캐시 무효화
         res.json({ success: true });
       });
     } else {
@@ -207,11 +301,6 @@ app.get('/download/:uuid', (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
     res.download(filePath, found.originalname);
   });
-});
-
-// ENCRYPTED_PW 반환 API
-app.get('/api/env-pw', (req, res) => {
-  res.json({ pw: process.env.ENCRYPTED_PW || '' });
 });
 
 // server.js 파일 맨 마지막, app.listen() 바로 위에 추가

@@ -2,9 +2,10 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>로그인 - 메모장</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.min.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
   <div class="bg-white p-8 rounded shadow-lg w-full max-w-xs flex flex-col items-center">
@@ -18,13 +19,12 @@
     const pwInput = document.getElementById('pwInput');
     const loginBtn = document.getElementById('loginBtn');
     const loginMsg = document.getElementById('loginMsg');
-    // 서버에서 암호 base64 값을 받아온 후 로그인 이벤트 등록
     fetch('/api/env-pw')
       .then(res => res.json())
       .then(data => {
         ENCRYPTED_PW = data.pw;
         function tryLogin() {
-          const val = btoa(pwInput.value);
+          const val = CryptoJS.SHA256(pwInput.value.trim()).toString(CryptoJS.enc.Hex);
           if (val === ENCRYPTED_PW) {
             window.sessionStorage.setItem('pw_ok', '1');
             window.location.href = 'index.html';

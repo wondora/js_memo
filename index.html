@@ -3,18 +3,42 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>메모장</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <title>모던 메모장</title>
+  
+  <!-- CSS 최적화: preload로 중요한 리소스 우선 로딩 -->
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"></noscript>
+  
+  <!-- JavaScript 최적화: defer 사용으로 HTML 파싱 차단 방지 -->
   <script defer src="app.js"></script>
+  
+  <!-- Service Worker 등록 -->
   <script>
-    // 로그인 인증 체크: sessionStorage에 pw_ok 없으면 login.html로 이동
-    if (!window.sessionStorage.getItem('pw_ok')) {
-      window.location.href = 'login.html';
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('Service Worker 등록 성공:', registration.scope);
+          })
+          .catch((error) => {
+            console.log('Service Worker 등록 실패:', error);
+          });
+      });
     }
   </script>
+  
+  <!-- PDF.js 라이브러리: 필요할 때만 로딩하도록 변경 -->
+  <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.js"></script> -->
+  <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.js"></script> -->
+  <script>
+    if (window.sessionStorage.getItem('pw_ok') !=='1') {
+	    location.href = 'login.html';
+    }
+  </script>
+
 </head>
 <body class="bg-gray-100 font-sans">
-  <div id="mainApp" class="max-w-2xl mx-auto mt-10 mb-10">
+  <div class="max-w-2xl mx-auto mt-10 mb-10">
     <header class="flex justify-between items-center mb-6">
       <h1 class="text-3xl font-bold">📝 메모장</h1>
       <button id="newMemoBtn" class="bg-blue-600 text-white px-4 py-2 rounded hidden">+ 새 메모</button>
@@ -22,6 +46,12 @@
 
     <div class="mb-4 flex justify-between">
       <input type="text" id="searchInput" placeholder="검색..." class="w-full px-3 py-2 rounded border">
+    </div>
+
+    <!-- 로딩 인디케이터 추가 -->
+    <div id="loadingIndicator" class="text-center py-8">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <p class="mt-2 text-gray-600">메모를 불러오는 중...</p>
     </div>
 
     <ul id="memoList" class="space-y-3">

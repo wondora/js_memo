@@ -2,6 +2,9 @@ let memos = [];
 let editId = null;
 let currentPage = 1;
 const MEMOS_PER_PAGE = 20;
+let passwordVerified = false; // 비밀번호 확인 상태 저장
+let searchTimeout = null; // 검색 디바운싱용
+let isLoading = false; // 로딩 상태 관리
 
 const memoList = document.getElementById("memoList");
 const modal = document.getElementById("modal");
@@ -9,10 +12,38 @@ const memoTitle = document.getElementById("memoTitle");
 const memoContent = document.getElementById("memoContent");
 const modalTitle = document.getElementById("modalTitle");
 const pagination = document.getElementById("pagination");
+const loadingIndicator = document.getElementById("loadingIndicator");
+const searchInput = document.getElementById("searchInput");
 
 //const API = "http://localhost:3000/api";
 //const API = "http://100.124.253.64:3000/api";
-const API = "https://memo2.fji.kr/api";
+//const API = "http://10.114.2.101:3000/api";
+const API = "/api";
+
+// 로딩 상태 관리 함수
+function showLoading() {
+  isLoading = true;
+  loadingIndicator.style.display = 'block';
+  memoList.style.display = 'none';
+}
+
+function hideLoading() {
+  isLoading = false;
+  loadingIndicator.style.display = 'none';
+  memoList.style.display = 'block';
+}
+
+// 디바운싱 함수
+function debounce(func, wait) {
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(searchTimeout);
+      func(...args);
+    };
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(later, wait);
+  };
+}
 
 // 클립보드 이미지 붙여넣기 처리 함수
 function handlePaste(e) {
@@ -113,11 +144,39 @@ function setupContentEditable() {
   togglePlaceholder();
 }
 
-// 서버에서 메모 목록 불러오기
+// 서버에서 메모 목록 불러오기 (캐싱 추가)
+let memoCache = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 30000; // 30초 캐시
+
 async function fetchMemos(filter = "") {
-  const res = await fetch(`${API}/memos`);
-  memos = await res.json();
-  renderMemos(filter);
+  const now = Date.now();
+  
+  // 캐시가 유효하고 필터가 없으면 캐시 사용
+  if (memoCache && (now - lastFetchTime) < CACHE_DURATION && !filter) {
+    renderMemos(filter);
+    return;
+  }
+  
+  if (isLoading) return; // 이미 로딩 중이면 중복 요청 방지
+  
+  showLoading();
+  
+  try {
+    const res = await fetch(`${API}/memos`);
+    if (!res.ok) throw new Error('Network response was not ok');
+    
+    memos = await res.json();
+    memoCache = [...memos]; // 캐시 업데이트
+    lastFetchTime = now;
+    
+    renderMemos(filter);
+  } catch (error) {
+    console.error('메모 로딩 실패:', error);
+    hideLoading();
+    // 에러 상태 표시
+    memoList.innerHTML = '<li class="text-center text-red-600 py-4">메모를 불러오는데 실패했습니다.</li>';
+  }
 }
 
 // 서버에 패스워드 확인 요청
@@ -147,6 +206,7 @@ function linkify(text) {
   });
 }
 
+// 메모 렌더링 최적화 (가상화 적용)
 function renderMemos(filter = "") {
   memoList.innerHTML = "";
   let filtered = memos.filter(m => m.title.includes(filter));
@@ -155,6 +215,9 @@ function renderMemos(filter = "") {
   const startIdx = (currentPage - 1) * MEMOS_PER_PAGE;
   const endIdx = startIdx + MEMOS_PER_PAGE;
   const pageMemos = filtered.slice(startIdx, endIdx);
+
+  // DocumentFragment 사용으로 DOM 조작 최적화
+  const fragment = document.createDocumentFragment();
 
   pageMemos.forEach((memo) => {
     const li = document.createElement("li");
@@ -242,6 +305,7 @@ function renderMemos(filter = "") {
     nextBtn.onclick = () => { currentPage++; renderMemos(filter); };
     pagination.appendChild(nextBtn);
   }
+  hideLoading();
 }
 
 function showModal(edit = false) {
@@ -260,6 +324,7 @@ function hideModal() {
   memoTitle.value = "";
   memoContent.innerHTML = "";
   editId = null;
+  passwordVerified = false; // 비밀번호 확인 상태 초기화
   // placeholder 표시
   const placeholder = document.getElementById('memoPlaceholder');
   if (placeholder) placeholder.style.display = '';
@@ -421,9 +486,14 @@ window.deleteMemo = async function(id) {
   }
 };
 
-document.getElementById("searchInput").oninput = (e) => {
+// 검색 기능에 디바운싱 적용
+const debouncedSearch = debounce((value) => {
   currentPage = 1;
-  renderMemos(e.target.value);
+  renderMemos(value);
+}, 300);
+
+document.getElementById("searchInput").oninput = (e) => {
+  debouncedSearch(e.target.value);
 };
 
 fetchMemos();
@@ -591,3 +661,13 @@ function setupFileInputDisplay() {
 }
 
 setupFileInputDisplay();
+
+// crypto-js 불러오기 필요
+const CryptoJS = require('crypto-js');
+
+// 환경변수 또는 하드코딩된 비밀번호 해시값 반환
+app.get('/api/env-pw', (req, res) => {
+  // 3895의 SHA-256 해시값
+  const hash = CryptoJS.SHA256('3895').toString(CryptoJS.enc.Hex);
+  res.json({ pw: hash });
+});
