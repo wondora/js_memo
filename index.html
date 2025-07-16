@@ -12,21 +12,6 @@
   <!-- JavaScript 최적화: defer 사용으로 HTML 파싱 차단 방지 -->
   <script defer src="app.js"></script>
   
-  <!-- Service Worker 등록 -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then((registration) => {
-            console.log('Service Worker 등록 성공:', registration.scope);
-          })
-          .catch((error) => {
-            console.log('Service Worker 등록 실패:', error);
-          });
-      });
-    }
-  </script>
-  
   <!-- PDF.js 라이브러리: 필요할 때만 로딩하도록 변경 -->
   <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.js"></script> -->
   <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.js"></script> -->
@@ -91,6 +76,19 @@
         </div>
     </div>
 </div>
+
+<!-- 비밀번호 입력 모달 -->
+<div id="pwModal" class="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 hidden">
+  <div class="bg-white p-6 rounded shadow-xl w-full max-w-xs">
+    <h2 class="text-lg font-bold mb-4">비밀번호 입력</h2>
+    <input type="password" id="pwInput" class="w-full px-4 py-2 border rounded mb-4" placeholder="비밀번호" autocomplete="current-password" />
+    <div class="text-right">
+      <button id="pwCancelBtn" class="px-3 py-1 bg-gray-300 rounded mr-2">취소</button>
+      <button id="pwOkBtn" class="px-3 py-1 bg-blue-600 text-white rounded">확인</button>
+    </div>
+  </div>
+</div>
+<!-- // 비밀번호 입력 모달 -->
 
 <!-- 채팅 플로팅 버튼 -->
 <a href="https://chat.fji.kr" target="_blank" aria-label="채팅 열기"

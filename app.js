@@ -149,11 +149,11 @@ let memoCache = null;
 let lastFetchTime = 0;
 const CACHE_DURATION = 30000; // 30초 캐시
 
-async function fetchMemos(filter = "") {
+async function fetchMemos(filter = "", force = false) {
   const now = Date.now();
   
-  // 캐시가 유효하고 필터가 없으면 캐시 사용
-  if (memoCache && (now - lastFetchTime) < CACHE_DURATION && !filter) {
+  // 캐시가 유효하고 필터가 없고, force가 false일 때만 캐시 사용
+  if (!force && memoCache && (now - lastFetchTime) < CACHE_DURATION && !filter) {
     renderMemos(filter);
     return;
   }
@@ -179,9 +179,45 @@ async function fetchMemos(filter = "") {
   }
 }
 
+// ===== 비밀번호 입력 모달 관련 코드 시작 =====
+function showPasswordModal() {
+  return new Promise((resolve) => {
+    const pwModal = document.getElementById('pwModal');
+    const pwInput = document.getElementById('pwInput');
+    const pwOkBtn = document.getElementById('pwOkBtn');
+    const pwCancelBtn = document.getElementById('pwCancelBtn');
+    
+    pwInput.value = '';
+    pwModal.classList.remove('hidden');
+    pwInput.focus();
+
+    function cleanup(result) {
+      pwModal.classList.add('hidden');
+      pwOkBtn.removeEventListener('click', onOk);
+      pwCancelBtn.removeEventListener('click', onCancel);
+      pwInput.removeEventListener('keydown', onKeyDown);
+      resolve(result);
+    }
+    function onOk() {
+      cleanup(pwInput.value);
+    }
+    function onCancel() {
+      cleanup(null);
+    }
+    function onKeyDown(e) {
+      if (e.key === 'Enter') onOk();
+      if (e.key === 'Escape') onCancel();
+    }
+    pwOkBtn.addEventListener('click', onOk);
+    pwCancelBtn.addEventListener('click', onCancel);
+    pwInput.addEventListener('keydown', onKeyDown);
+  });
+}
+// ===== 비밀번호 입력 모달 관련 코드 끝 =====
+
 // 서버에 패스워드 확인 요청
 async function checkPassword() {
-  const code = prompt("비밀번호를 입력하세요.");
+  const code = await showPasswordModal();
   if (!code) return false;
   const res = await fetch(`${API}/password/check`, {
     method: "POST",
@@ -448,7 +484,7 @@ document.getElementById("saveBtn").onclick = async () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
     }
-    await fetchMemos();
+    await fetchMemos("", true); // force=true로 호출
     hideModal();
   } catch (error) {
     console.error('저장 중 오류 발생:', error);
@@ -482,7 +518,7 @@ window.deleteMemo = async function(id) {
   if (!ok) return;
   if (confirm("정말 삭제하시겠습니까?")) {
     await fetch(`${API}/memos/${id}`, { method: "DELETE" });
-    await fetchMemos();
+    await fetchMemos("", true); // force=true로 호출
   }
 };
 

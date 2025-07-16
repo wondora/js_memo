@@ -1,0 +1,49 @@
+const CACHE_NAME = 'memo-cache-v2'; // v2로 버전업
+const urlsToCache = [
+  '/',
+  '/app.js',
+  '/index.html',
+  'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css'
+];
+
+// Service Worker 설치
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('캐시가 열렸습니다');
+        return cache.addAll(urlsToCache);
+      })
+  );
+});
+
+// Service Worker 활성화
+self.addEventListener('activate', function(event) {
+  const cacheWhitelist = [CACHE_NAME];
+  event.waitUntil(
+    caches.keys().then(function(cacheNames) {
+      return Promise.all(
+        cacheNames.map(function(cacheName) {
+          if (cacheWhitelist.indexOf(cacheName) === -1) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+});
+
+// 네트워크 요청 가로채기
+self.addEventListener('fetch', function(event) {
+  if (event.request.url.includes('/api/')) {
+    // API 요청은 항상 네트워크에서
+    event.respondWith(fetch(event.request));
+  } else {
+    // 그 외 정적 파일은 캐시 우선
+    event.respondWith(
+      caches.match(event.request).then(function(response) {
+        return response || fetch(event.request);
+      })
+    );
+  }
+}); 
